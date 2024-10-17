@@ -15,6 +15,7 @@ use ropey::Rope;
 use stdext::unwrap::IntoResult;
 use tower_lsp::lsp_types::DocumentSymbol;
 use tower_lsp::lsp_types::DocumentSymbolParams;
+use tower_lsp::lsp_types::FoldingRange;
 use tower_lsp::lsp_types::Location;
 use tower_lsp::lsp_types::Range;
 use tower_lsp::lsp_types::SymbolInformation;
@@ -119,6 +120,12 @@ pub(crate) fn document_symbols(
 
     // return the children we found
     Ok(root.children.unwrap_or_default())
+}
+
+pub fn folding_ranges(contents: &Rope, node: &Node) -> anyhow::Result<Vec<FoldingRange>> {
+    let mut folding_ranges = Vec::new();
+    collect_folding_ranges(node, contents, &mut folding_ranges)?;
+    Ok(folding_ranges)
 }
 
 fn is_indexable(node: &Node) -> bool {
@@ -423,4 +430,33 @@ mod tests {
             selection_range: range,
         }]);
     }
+}
+
+fn collect_folding_ranges(
+    node: &Node,
+    contents: &Rope,
+    folding_ranges: &mut Vec<FoldingRange>,
+) -> Result<()> {
+    // Handle comments for folding, similar to index_node function
+    if node.node_type() == NodeType::Comment {
+        let start = convert_point_to_position(contents, node.start_position());
+        let end = convert_point_to_position(contents, node.end_position());
+
+        let folding_range = FoldingRange {
+            start_line: start.line,
+            start_character: Some(start.character),
+            end_line: end.line,
+            end_character: Some(end.character),
+            kind: Some(tower_lsp::lsp_types::FoldingRangeKind::Comment),
+        };
+        folding_ranges.push(folding_range);
+    }
+
+    // Recurse into child nodes
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_folding_ranges(&child, contents, folding_ranges)?;
+    }
+
+    Ok(())
 }
