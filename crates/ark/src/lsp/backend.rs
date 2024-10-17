@@ -42,6 +42,7 @@ use crate::lsp::main_loop::TokioUnboundedSender;
 use crate::lsp::statement_range;
 use crate::lsp::statement_range::StatementRangeParams;
 use crate::lsp::statement_range::StatementRangeResponse;
+use crate::lsp::symbols::folding_ranges;
 use crate::r_task;
 
 // Based on https://stackoverflow.com/a/69324393/1725177
@@ -202,6 +203,16 @@ impl LanguageServer for Backend {
             self.request(LspRequest::DocumentSymbol(params)).await,
             LspResponse::DocumentSymbol
         )
+    }
+
+    async fn folding_range(&self, params: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
+        // Get the document from `events_tx` or similar storage
+        let uri = params.text_document.uri.clone();
+        let document = self.get_document_by_uri(&uri)?;
+
+        // Call the folding_ranges function defined in symbols.rs
+        let folding_ranges = folding_ranges(&document.contents, &document.ast.root_node())?;
+        Ok(Some(folding_ranges))
     }
 
     async fn execute_command(
