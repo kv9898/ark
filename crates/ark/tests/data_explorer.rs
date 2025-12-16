@@ -3163,7 +3163,7 @@ fn test_format_options_state_change() {
     });
     
     // Restore original R options
-    r_task(move || {
+    r_task(|| {
         let restore_cmd = format!("options(scipen = {}, digits = {})", original_scipen, original_digits);
         harp::parse_eval_global(&restore_cmd).expect("Failed to restore original R options");
     });
