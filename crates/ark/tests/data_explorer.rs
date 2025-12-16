@@ -3115,8 +3115,10 @@ fn test_format_options_state_change() {
     
     // Save the current R options so we can restore them later
     let (original_scipen, original_digits) = r_task(|| {
-        let scipen: i64 = harp::parse_eval_global("getOption('scipen')").unwrap().try_into().unwrap_or(0);
-        let digits: i64 = harp::parse_eval_global("getOption('digits')").unwrap().try_into().unwrap_or(7);
+        let scipen_obj = harp::parse_eval_global("getOption('scipen')").expect("Failed to get scipen option");
+        let digits_obj = harp::parse_eval_global("getOption('digits')").expect("Failed to get digits option");
+        let scipen: i64 = scipen_obj.try_into().unwrap_or(0);
+        let digits: i64 = digits_obj.try_into().unwrap_or(7);
         (scipen, digits)
     });
     
@@ -3162,6 +3164,7 @@ fn test_format_options_state_change() {
     
     // Restore original R options
     r_task(move || {
-        harp::parse_eval_global(&format!("options(scipen = {}, digits = {})", original_scipen, original_digits)).unwrap();
+        let restore_cmd = format!("options(scipen = {}, digits = {})", original_scipen, original_digits);
+        harp::parse_eval_global(&restore_cmd).expect("Failed to restore original R options");
     });
 }
