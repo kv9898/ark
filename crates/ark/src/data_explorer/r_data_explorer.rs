@@ -1312,6 +1312,7 @@ impl RDataExplorer {
         // In R 4.2, Rf_GetOption1 (used by get_option) doesn't work correctly for scipen
         // due to special handling added in later versions. We need to use the R interpreter's
         // getOption() function instead. See: https://github.com/wch/r-source/commit/7f20c19
+        // Note: 'digits' works fine with Rf_GetOption1, so we don't need to change it.
         let scipen: i64 = harp::parse_eval_global("getOption('scipen')")
             .ok()
             .and_then(|obj| obj.try_into().ok())
