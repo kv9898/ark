@@ -63,7 +63,7 @@ help <- function(topic, package = NULL) {
 # Search all installed help documentation and show R's native HTML results page.
 #' @export
 .ps.help.searchHelp <- function(query) {
-    .ps.help.searchIndex()
+    .ps.help.searchIndex(native = TRUE)
     results <- utils::help.search(query, package = NULL)
 
     if (!in_ark_tests()) {
@@ -73,14 +73,15 @@ help <- function(topic, package = NULL) {
     TRUE
 }
 
-# Cache sorted aliases, rebuilding native R's search database when library metadata
+# Cache sorted aliases, marking native R's search database stale when library metadata
 # changes. Checking metadata also catches in-place updates that do not change the
 # library directory's mtime (which is what help.search() checks itself).
 .ps.help.searchIndex <- local({
     signature <- NULL
     index <- NULL
+    native_dirty <- TRUE
 
-    function() {
+    function(native = FALSE) {
         libraries <- .libPaths()
         packages <- unlist(lapply(libraries, list.dirs, recursive = FALSE), use.names = FALSE)
         metadata <- unlist(lapply(
@@ -95,9 +96,8 @@ help <- function(topic, package = NULL) {
             types = getOption("help.search.types")
         )
         if (!identical(current, signature)) {
-            matches <- utils::help.search(".", fields = "alias", package = NULL, rebuild = TRUE)$matches
-            matches <- matches[matches[, "Type"] == "help", , drop = FALSE]
-            topics <- unique(data.frame(package = matches[, "Package"], label = matches[, "Entry"]))
+            topics <- help_aliases(packages)
+            topics <- unique(topics)
             labels <- tolower(topics$label)
             sorted <- order(labels, topics$package)
             index <<- list(
@@ -105,10 +105,52 @@ help <- function(topic, package = NULL) {
                 entries = paste(topics$package[sorted], topics$label[sorted], sep = "\u001f")
             )
             signature <<- current
+            native_dirty <<- TRUE
+        }
+        # Native search still owns its matching and rendering. Refresh its database
+        # only for a submitted search, not while constructing autocomplete aliases.
+        if (native && native_dirty) {
+            utils::help.search(".", fields = "alias", package = NULL, rebuild = TRUE)
+            native_dirty <<- FALSE
         }
         index
     }
 })
+
+# Keep R's package eligibility, library precedence, locale and ranking semantics.
+# The standalone Rust reader handles only the installed alias metadata.
+help_aliases <- function(packages) {
+    native <- function() {
+        matches <- utils::help.search(".", fields = "alias", package = NULL, rebuild = TRUE)$matches
+        matches <- matches[matches[, "Type"] == "help", , drop = FALSE]
+        data.frame(package = matches[, "Package"], label = matches[, "Entry"])
+    }
+    types <- getOption("help.search.types")
+    if (!identical(types, c("vignette", "demo", "help"))) {
+        return(native())
+    }
+    tryCatch({
+        valid <- vapply(packages, function(path) {
+            if (startsWith(basename(path), ".")) return(FALSE)
+            metadata <- file.path(path, "Meta", "package.rds")
+            if (!file.exists(metadata)) return(FALSE)
+            info <- readRDS(metadata)$DESCRIPTION[c("Package", "Version")]
+            length(info) == 2L && !anyNA(info) &&
+                grepl(.standard_regexps()$valid_package_version, info[["Version"]])
+        }, logical(1))
+        packages <- packages[valid]
+        packages <- packages[!duplicated(basename(packages))]
+        entries <- .ps.Call("ps_help_read_aliases", packages)
+        parts <- strsplit(entries, "\u001f", fixed = TRUE)
+        data.frame(
+            package = vapply(parts, `[[`, "", 1L),
+            label = vapply(parts, `[[`, "", 2L)
+        )
+    }, error = function(error) {
+        # Unsupported serialization/encoding must not make installed help disappear.
+        native()
+    })
+}
 
 # Return only matching package-qualified aliases, ranked as in the search box:
 # exact label, prefix, then substring; alphabetical within each group.

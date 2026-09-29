@@ -401,12 +401,70 @@ local({
     # The library directory itself has not changed.
     Sys.setFileTime(metadata, Sys.time() + 2)
     stopifnot(identical(.ps.help.getHelpTopics(marker, 50L), paste("stats", marker, sep = "\u001f")))
+    .ps.help.searchIndex(native = TRUE)
     stopifnot(nrow(utils::help.search(marker, agrep = FALSE)$matches) > 0L)
+    # R supports ASCII serialization, outside rd-rds's binary XDR reader.
+    # The native fallback must keep these aliases available.
+    saveRDS(db, metadata, ascii = TRUE)
+    Sys.setFileTime(metadata, Sys.time() + 4)
+    stopifnot(inherits(try(.ps.Call("ps_help_read_aliases", file.path(library, "stats")), silent = TRUE), "try-error"))
+    stopifnot(identical(.ps.help.getHelpTopics(marker, 50L), paste("stats", marker, sep = "\u001f")))
     unlink(file.path(library, "stats"), recursive = TRUE)
     stopifnot(length(.ps.help.getHelpTopics(marker, 50L)) == 0L)
     TRUE
 })
 
 "#, ARK_ENVS.positron_ns).unwrap().to::<bool>().unwrap()
+    }));
+}
+
+#[test]
+fn test_help_rust_aliases_match_native() {
+    assert!(r_task(|| {
+        harp::parse_eval0(r#"
+local({
+    packages <- vapply(c("base", "stats", "utils"), find.package, "")
+    actual <- unique(.ps.Call("ps_help_read_aliases", unname(packages)))
+    matches <- utils::help.search(".", fields = "alias", package = names(packages), rebuild = TRUE)$matches
+    matches <- matches[matches[, "Type"] == "help", , drop = FALSE]
+    expected <- unique(paste(matches[, "Package"], matches[, "Entry"], sep = "\u001f"))
+    stopifnot(identical(sort(actual), sort(expected)))
+    TRUE
+})
+"#, ARK_ENVS.positron_ns).unwrap().to::<bool>().unwrap()
+    }));
+}
+
+#[test]
+fn test_help_rust_alias_encodings_and_compression() {
+    assert!(r_task(|| {
+        harp::parse_eval0(
+            r#"
+local({
+    package <- tempfile("ark-help-rds-")
+    dir.create(file.path(package, "Meta"), recursive = TRUE)
+    on.exit(unlink(package, recursive = TRUE))
+    file <- file.path(package, "Meta", "hsearch.rds")
+    aliases <- c("ordinary", "caf\u00e9", "\u6d4b\u8bd5")
+    db <- list(NULL, cbind(Alias = aliases, ID = "1", Package = "fixture"))
+    expected <- paste("fixture", aliases, sep = "\u001f")
+    for (compression in list(FALSE, "gzip", "bzip2", "xz")) {
+        saveRDS(db, file, compress = compression)
+        stopifnot(identical(.ps.Call("ps_help_read_aliases", package), expected))
+    }
+    saveRDS(list(NULL, matrix("bad", 1L, 2L)), file)
+    stopifnot(inherits(try(.ps.Call("ps_help_read_aliases", package), silent = TRUE), "try-error"))
+    saveRDS(NULL, file)
+    stopifnot(length(.ps.Call("ps_help_read_aliases", package)) == 0L)
+    unlink(file)
+    stopifnot(length(.ps.Call("ps_help_read_aliases", package)) == 0L)
+    TRUE
+})
+"#,
+            ARK_ENVS.positron_ns,
+        )
+        .unwrap()
+        .to::<bool>()
+        .unwrap()
     }));
 }

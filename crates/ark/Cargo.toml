@@ -59,6 +59,7 @@ oak_semantic.workspace = true
 oak_source.workspace = true
 oak_srcref.workspace = true
 once_cell.workspace = true
+rd-rds.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 reqwest-middleware.workspace = true
