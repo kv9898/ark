@@ -534,6 +534,7 @@ fn test_help_punctuation_suggestions_open_exact_target() {
         ("base", "$<-", "Extract"),
         ("base", "@", "slotOp"),
         ("base", "@<-", "slotOp"),
+        ("base", ":", "Colon"),
         ("base", "::", "ns-dblcolon"),
         ("base", ":::", "ns-dblcolon"),
         ("methods", "$<-,envRefClass-method", "stdRefClass"),
@@ -566,33 +567,50 @@ fn test_help_punctuation_suggestions_open_exact_target() {
             })
             .unwrap();
         assert_eq!(suggestion.topic, format!("{package}::{alias}"));
-        frontend.send_shell(CommWireMsg {
-            comm_id: comm_id.clone(),
-            data: serde_json::json!({
-                "jsonrpc": "2.0", "id": "open-alias", "method": "show_help_topic",
-                "params": { "topic": suggestion.topic }
-            }),
-        });
-        frontend.recv_iopub_busy();
-        let messages = frontend.recv_iopub_interleaved(&[&[IopubExpectation::Idle], &[
-            IopubExpectation::CommMsg,
-            IopubExpectation::CommMsg,
-        ]]);
-        let comms: Vec<_> = messages
-            .into_iter()
-            .filter_map(|message| match message {
-                Message::CommMsg(message) => Some(message.content),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(comms[0].data["method"], "show_help");
-        let url = comms[0].data["params"]["content"].as_str().unwrap();
-        assert!(url.ends_with(&format!("/library/{package}/html/{target}.html")));
-        assert_eq!(comms[1].data["result"], true);
+        assert_help_topic_target(&frontend, &comm_id, &suggestion.topic, package, target);
+    }
+    for (topic, target) in [
+        (":", "Colon"),
+        ("::", "ns-dblcolon"),
+        (":::", "ns-dblcolon"),
+    ] {
+        assert_help_topic_target(&frontend, &comm_id, topic, "base", target);
     }
     frontend.execute_request_invisibly(
         ".libPaths(old_alias_paths); unlink(alias_library, recursive = TRUE)",
     );
+}
+
+fn assert_help_topic_target(
+    frontend: &DummyArkFrontend,
+    comm_id: &str,
+    topic: &str,
+    package: &str,
+    target: &str,
+) {
+    frontend.send_shell(CommWireMsg {
+        comm_id: String::from(comm_id),
+        data: serde_json::json!({
+            "jsonrpc": "2.0", "id": "open-alias", "method": "show_help_topic",
+            "params": { "topic": topic }
+        }),
+    });
+    frontend.recv_iopub_busy();
+    let messages = frontend.recv_iopub_interleaved(&[&[IopubExpectation::Idle], &[
+        IopubExpectation::CommMsg,
+        IopubExpectation::CommMsg,
+    ]]);
+    let comms: Vec<_> = messages
+        .into_iter()
+        .filter_map(|message| match message {
+            Message::CommMsg(message) => Some(message.content),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(comms[0].data["method"], "show_help");
+    let url = comms[0].data["params"]["content"].as_str().unwrap();
+    assert!(url.ends_with(&format!("/library/{package}/html/{target}.html")));
+    assert_eq!(comms[1].data["result"], true);
 }
 
 #[test]
@@ -601,9 +619,12 @@ fn test_help_qualified_topic_splitting() {
         harp::parse_eval0(
             r#"
 local({
-    for (alias in c("$", "$<-", "$.data.frame", "@", "@<-", "::", ":::")) {
+    for (alias in c("$", "$<-", "$.data.frame", "@", "@<-", ":", "::", ":::")) {
         stopifnot(identical(split_topic(paste0("base::", alias)),
             list(topic = alias, package = "base")))
+    }
+    for (alias in c(":", "::", ":::")) {
+        stopifnot(identical(split_topic(alias), list(topic = alias, package = NULL)))
     }
     stopifnot(identical(split_topic("utils:::find"),
         list(topic = "find", package = "utils")))

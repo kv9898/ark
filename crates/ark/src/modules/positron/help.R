@@ -191,12 +191,16 @@ help <- function(topic, package = NULL) {
 # Resolve the package specifier, if there is one
 split_topic <- function(topic) {
     separator <- regexpr("::", topic, fixed = TRUE)[[1L]]
-    if (separator > 0L) {
+    if (separator > 1L) {
         package <- substr(topic, 1L, separator - 1L)
         alias <- substring(topic, separator + 2L)
-        # Preserve internal `pkg:::name` lookups, but keep a literal `::` alias
-        # intact in `pkg::::` rather than consuming its first colon.
-        if (startsWith(alias, ":") && !startsWith(alias, "::")) {
+        # Preserve internal `pkg:::name` lookups, but keep literal `:` and `::`
+        # aliases intact in `pkg:::` and `pkg::::`.
+        if (
+            nchar(alias) > 1L &&
+                startsWith(alias, ":") &&
+                !startsWith(alias, "::")
+        ) {
             alias <- substring(alias, 2L)
         }
         return(list(topic = alias, package = package))
