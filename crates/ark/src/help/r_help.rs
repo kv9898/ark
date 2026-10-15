@@ -353,6 +353,8 @@ pub unsafe extern "C-unwind" fn ps_help_browse_external_url(
 
 #[cfg(test)]
 mod tests {
+    use anyhow::anyhow;
+
     use super::SearchContext;
     use super::SEARCH_ID;
 
@@ -364,7 +366,7 @@ mod tests {
                 SEARCH_ID.with(|id| id.borrow().clone()),
                 Some(String::from("inner"))
             );
-            Err(anyhow::anyhow!("search failed"))
+            Err(anyhow!("search failed"))
         }
 
         assert_eq!(SEARCH_ID.with(|id| id.borrow().clone()), None);

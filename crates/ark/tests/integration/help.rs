@@ -174,6 +174,23 @@ fn test_help_search_comm() {
 }
 
 #[test]
+fn test_help_search_empty_query() {
+    let r_help = TestRHelp::new();
+    for query in ["", " ", "\t\n"] {
+        assert_eq!(
+            r_help.request(
+                HelpBackendRequest::SearchHelp(SearchHelpParams {
+                    query: String::from(query),
+                    search_id: String::from("empty-search"),
+                }),
+                "empty-search",
+            ),
+            HelpBackendReply::SearchHelpReply(false)
+        );
+    }
+}
+
+#[test]
 fn test_help_search_query_edge_cases() {
     let r_help = TestRHelp::new();
     for query in [
